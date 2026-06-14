@@ -1,5 +1,10 @@
 #pragma once
 
+// M_PI may not be defined on all ESP32 Arduino cores
+#ifndef M_PI
+#define M_PI 3.14159265358979323846f
+#endif
+
 // ═══════════════════════════════════════════════════════
 // DSP Configuration Constants
 // ═══════════════════════════════════════════════════════
@@ -26,6 +31,9 @@
 
 // ── Gain ───────────────────────────────────────────────
 #define GAIN_MAX            2.0f        // Maximum gain multiplier
+
+// ── OLED (SSD1306) ──────────────────────────────────────
+#define SSD1306_ADDRESS     0x3C        // I2C address (0x3C or 0x3D)
 
 // ── UI ─────────────────────────────────────────────────
 #define UI_REFRESH_MS       200         // OLED refresh interval (ms)

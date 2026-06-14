@@ -22,9 +22,10 @@
 
 // ──────────────────────────────────────────────
 // CS4344 DAC mute pins (active low = muted)
+// Avoid strapping pins (GPIO0, GPIO2, GPIO12, GPIO15)
 // ──────────────────────────────────────────────
 #define PIN_DAC_HIGH_MUTE GPIO_NUM_4
-#define PIN_DAC_LOW_MUTE  GPIO_NUM_2
+#define PIN_DAC_LOW_MUTE  GPIO_NUM_27
 
 // ──────────────────────────────────────────────
 // I2S0 – high‑band DAC (CS4344 #1)
