@@ -1,89 +1,21 @@
-# Planning.md – ESP32 DSP Front‑End
+ # DSP Enhancement Plan: ESP32-2Way Crossover
 
-## Goal
-Create firmware for an ESP32‑WROOM‑32 (or DevKit‑C V4) that:
-- Receives stereo audio via Bluetooth A2DP sink.
-- Splits the audio into low and high frequency bands using a crossover.
-- Sends low‑band to one CS4344 DAC and high‑band to a second CS4344 DAC (4‑channel output: L‑low, L‑high, R‑low, R‑high).
-- Reads four potentiometers via an ADS1115 for Master Volume, Crossover Frequency, Low‑gain, High‑gain.
-- Shows current parameters and Bluetooth status on a 128×64 I²C OLED.
+## Phase 1: Stability & Audio Quality (Bug Fixes)
+- [ ] **Implement Parameter Smoothing:** Add a linear interpolator to `dsp_params` so that changes to frequency and gain "slide" over 10-20ms instead of jumping.
+- [ ] **I2C Timeout/Recovery:** Wrap I2C calls in a timeout check to ensure a failing OLED doesn't freeze the ADC readings.
+- [ ] **Filter Coefficient Stability:** Validate that the coefficient calculation remains stable at the `CROSSOVER_MIN_HZ` limit to avoid oscillation.
 
-## Hardware Summary
-| Component | Interface | ESP‑32 Pins (suggested) |
-|-----------|-----------|--------------------------|
-| CS4344 (x2) | I²S0 (high‑band) + I²S1 (low‑band) + GPIO mute | I²S0: BCK‑GPIO25, WS‑GPIO26, DATA‑GPIO23; I²S1: BCK‑GPIO14, WS‑GPIO15, DATA‑GPIO13; MUTE‑HIGH‑GPIO4, MUTE‑LOW‑GPIO5 |
-| ADS1115 | I²C | SDA‑GPIO21, SCL‑GPIO22 |
-| OLED (SSD1306) | I²C | Same SDA/SCL as ADS1115 |
-| Potentiometers (x4) | Connected to ADS1115 AIN0‑AIN3 | – |
-| Bluetooth | Built‑in | – |
+## Phase 2: DSP Engine Upgrades (Optimizations)
+- [ ] **DC Block Filter:** Implement a 1st-order High-Pass filter at 20Hz to remove DC offset.
+- [ ] **Optimized Loop Unrolling:** Refactor the DSP inner loop to process samples using pointer arithmetic instead of array indexing for a minor speed boost.
+- [ ] **Precision Tuning:** Move filter state variables (`filt_state`) to `double` to reduce quantization noise.
 
-## Software Architecture (FreeRTOS tasks)
-- **Core 0 (PRO_CPU)** – Bluetooth A2DP sink → Ring‑buffer.
-- **Core 1 (APP_CPU)** – DSP task (crossover, gain), UI task (ADS1115 + OLED), optional watchdog.
-- **Ring‑buffer** for audio frames shared between cores.
+## Phase 3: UI & User Experience (Improvements)
+- [ ] **RMS VU Meter:** Replace raw sample display on OLED with an RMS (Root Mean Square) calculation for a professional-looking volume bar.
+- [ ] **Boot-up Animation:** Add a "System Initializing" progress bar to the OLED.
+- [ ] **BT State Visuals:** Add a small icon or color-coded text to clearly indicate "Disconnected" vs "Connected" vs "Streaming".
 
-## Phase‑by‑Phase Implementation Plan
-### Phase 1 – Project Scaffold & Core Drivers
-1. Create PlatformIO project (`pio project init --ide <your-ide> --board esp32dev`).
-2. Add library dependencies in `platformio.ini` (Adafruit ADS1X15, u8g2).
-3. Implement I²C driver for ADS1115 (via Adafruit library).
-4. Implement OLED driver (SSD1306) using `u8g2`.
-5. Set up two I²S peripherals (I2S0 for high band, I2S1 for low band) with proper pin mapping.
-6. Write a test program that outputs a constant sine wave to both DACs to verify I²S wiring.
-
-### Phase 2 – Bluetooth A2DP Sink
-1. Initialise BT controller and Bluedroid stack.
-2. Register A2DP sink callbacks; forward incoming PCM to a ring‑buffer.
-3. Verify audio reception by routing PCM directly to a single DAC (skip crossover for now).
-
-### Phase 3 – DSP Core (Crossover & Gain)
-1. Implement a 2‑band crossover (first‑order IIR, replace later with Butterworth if needed).
-2. Add gain stage for Master, Low‑gain, High‑gain (multiply samples, apply clipping).
-3. Make crossover frequency configurable (default 2 kHz) – expose as a variable.
-4. Pull audio frames from the ring‑buffer, process, write low‑band to I2S1, high‑band to I2S0.
-
-### Phase 4 – Control Interface (ADS1115 + OLED)
-1. Poll ADS1115 at 10 Hz; map channels:
-   - CH0 → Master Volume (0‑1.0)
-   - CH1 → Crossover Frequency (0.5 k‑4 k Hz)
-   - CH2 → Low‑band Gain (0‑2.0)
-   - CH3 → High‑band Gain (0‑2.0)
-2. Update global DSP parameters (protected by a mutex).
-3. Refresh OLED (5 Hz) showing:
-   - Bluetooth status (Connected / Disconnected)
-   - Volume, crossover freq, low/high gains.
-   - Simple menu for future extensions.
-
-### Phase 5 – Integration & Testing
-1. Run full system: connect a phone via Bluetooth, play music, verify four‑channel output with oscilloscope or headphones.
-2. Adjust filter coefficients; ensure no audible clicks when parameters change.
-3. Add soft‑mute during parameter changes to avoid pops.
-4. Stress‑test: change pots rapidly while streaming audio.
-
-### Phase 6 – Polishing & Optional Features
-- OTA update support.
-- Wi‑Fi web UI to tweak parameters.
-- Store last settings in NVS.
-- Power‑down mute when BT disconnected.
-
-## Build & Flash (PlatformIO)
-```bash
-# Build
-pio run
-
-# Upload
-pio run --target upload
-
-# Monitor serial output
-pio device monitor
-```
-
-## Deliverables
-- `platformio.ini` – PlatformIO project configuration.
-- `partitions.csv` – custom partition table.
-- `include/` – shared headers (`pins.h`, `config.h`).
-- `src/` – source files (`main.c`, `bluetooth.c`, `dsp.c`, `ui.c`).
-- `components/ads1115/` – ADS1115 driver (if custom).
-- `components/ssd1306/` – SSD1306 driver (if custom).
-- `README.md` – project overview and build steps.
-- `Planning.md` – this document.
+## Technical Constraints
+- **Core 1:** Must remain dedicated to DSP.
+- **Core 0:** Handles I2C, BT, and UI.
+- **Memory:** Keep ring buffer at 8KB to maintain low latency.
