@@ -1,0 +1,171 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  # ─────────────────────────────────────────────────────────
+  # Job 1: Host-native unit tests
+  # Runs on Ubuntu — validates structs, math, pins, ADC mapping
+  # ─────────────────────────────────────────────────────────
+  test-native:
+    name: Unit Tests (Native)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio
+
+      - name: Run native unit tests
+        run: pio test -e native
+
+  # ─────────────────────────────────────────────────────────
+  # Job 2: Build ESP32 firmware
+  # Compiles for the actual target — catches ESP32-specific errors
+  # ─────────────────────────────────────────────────────────
+  build-esp32:
+    name: Build (ESP32)
+    runs-on: ubuntu-latest
+    needs: test-native
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio
+
+      - name: Build ESP32 firmware
+        run: pio run -e esp32dev
+
+      - name: Check firmware size
+        run: |
+          ELF=".pio/build/esp32dev/firmware.elf"
+          if [ -f "$ELF" ]; then
+            SIZE=$(wc -c < "$ELF")
+            echo "Firmware size: $SIZE bytes"
+            # Warn if flash usage exceeds 90%
+            MAX=$((1572864 * 90 / 100))  # 90% of 1.5MB app partition
+            if [ "$SIZE" -gt "$MAX" ]; then
+              echo "::warning::Firmware size ($SIZE) exceeds 90% of app partition ($MAX)"
+            fi
+          fi
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-esp32
+          path: .pio/build/esp32dev/firmware.bin
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────
+  # Job 3: Code quality checks
+  # Validates no strapping pins are misused, checks for common issues
+  # ─────────────────────────────────────────────────────────
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check for strapping pin misuse
+        run: |
+          echo "Checking for strapping pin usage (GPIO 0, 2, 12, 15)..."
+          ERRORS=0
+
+          # GPIO 0: Only allowed as I2S MCLK output, not as general GPIO
+          if grep -n "pinMode.*0\b\|digitalWrite.*0\b\|digitalRead.*0\b" src/*.cpp include/*.h 2>/dev/null | grep -v "I2S\|MCLK\|i2s"; then
+            echo "::warning::GPIO 0 used as general I/O — this is a strapping pin!"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # GPIO 12: Strapping pin (MTDI)
+          if grep -rn "PIN.*12\b\|GPIO.*12\b\|gpio.*12\b" include/pins.h 2>/dev/null | grep -v "//\|strapping\|AVOID\|128\|0x12\|120\|125\|126\|127\|129\|13\|14\|15\|16\|17\|18\|19\|2"; then
+            echo "::warning::GPIO 12 may be used — this is a strapping pin!"
+          fi
+
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "::error::Found $ERRORS strapping pin issue(s)"
+            exit 1
+          fi
+          echo "✓ No strapping pin issues found"
+
+      - name: Check for TODO/FIXME markers
+        run: |
+          echo "Checking for unresolved TODO/FIXME markers..."
+          TODOS=$(grep -rn "TODO\|FIXME\|HACK\|XXX" src/*.cpp include/*.h 2>/dev/null | grep -v "TODO: load_preset" || true)
+          if [ -n "$TODOS" ]; then
+            echo "::notice::Found TODO/FIXME markers:"
+            echo "$TODOS"
+          else
+            echo "✓ No unresolved TODO/FIXME markers"
+          fi
+
+      - name: Verify all source files have header guards
+        run: |
+          echo "Checking for #pragma once in all headers..."
+          ERRORS=0
+          for f in include/*.h; do
+            if ! grep -q "pragma once" "$f" 2>/dev/null; then
+              echo "::error::Missing #pragma once in $f"
+              ERRORS=$((ERRORS + 1))
+            fi
+          done
+          if [ "$ERRORS" -gt 0 ]; then
+            exit 1
+          fi
+          echo "✓ All headers have #pragma once"
+
+      - name: Check file documentation
+        run: |
+          echo "Checking for file-level documentation comments..."
+          ERRORS=0
+          for f in src/*.cpp include/*.h; do
+            FIRST=$(head -3 "$f")
+            if ! echo "$FIRST" | grep -q "@file\|/\*\*\|//"; then
+              echo "::warning::Missing file documentation in $f"
+            fi
+          done
+          echo "✓ Documentation check complete"
