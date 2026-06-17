@@ -204,12 +204,14 @@ If the mutex cannot be acquired within 10 ms:
 ### Flash
 | Data | Size | Purpose |
 |------|------|---------|
-| Firmware + libraries | ~1.17 MB | Code, constants, DSP algorithms |
+| Firmware + libraries | ~1.69 MB | Code, constants, DSP algorithms, web server |
 | Preset storage (NVS) | ~2 KB | 8 presets × ~256 bytes each |
 | NVS overhead | ~4 KB | Key-value metadata |
-| **Total used** | **~1.17 MB** | |
-| **App partition** | **1.5 MB** | 4 MB chip, single-app layout |
-| **Free for expansion** | **~330 KB** | Future features, OTA support |
+| Web UI (LittleFS) | ~12 KB | HTML/CSS/JS for web portal |
+| **Total used** | **~1.7 MB** | |
+| **App partition** | **2.0 MB** | 4 MB chip, single-app layout |
+| **Free for expansion** | **~300 KB** | Future features |
+| **LittleFS partition** | **512 KB** | Web files, future static assets |
 
 ## I2S Configuration
 

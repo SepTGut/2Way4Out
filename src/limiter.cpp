@@ -46,8 +46,9 @@ void lim_process_sample(float in_l, float in_r, float &out_l, float &out_r,
         return;
     }
 
+    // Read from smoothed params for click-free parameter changes
     const dyn_params_t &params =
-        (&current_params.low_driver)[driver].limiter;
+        (&smoothed_params.low_driver)[driver].limiter;
 
     if (!params.enabled) {
         out_l = in_l;

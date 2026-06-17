@@ -22,6 +22,9 @@ extern dsp_params_t current_params;
 // ── Bluetooth state ──
 extern volatile bt_conn_state_t bt_state;
 
+// ── Smoothed parameters (written by DSP task, read by compressor/limiter/EQ) ──
+extern dsp_params_t smoothed_params;
+
 // ── Crossover filter state (persists across batches) ──
 // [0] = L low-prev, [1] = R low-prev, [2] = L high-prev, [3] = R high-prev
 extern float filt_state[4];
@@ -54,6 +57,10 @@ extern int16_t *delay_buf_low_R;   // Woofer right delay line
 extern int16_t *delay_buf_high_L;  // Tweeter left delay line
 extern int16_t *delay_buf_high_R;  // Tweeter right delay line
 extern uint16_t delay_write_idx[2]; // Write position [low, high]
+
+// ── WiFi / Web state ──
+extern volatile bool    wifi_connected;    // true when WiFi AP is active
+extern String           web_server_ip;     // "http://192.168.4.1"
 
 // ── UI / control state ──
 extern volatile int8_t  enc_count;     // Accumulated encoder steps (cleared by UI)

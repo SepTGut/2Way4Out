@@ -95,7 +95,8 @@ static void compute_biquad_coeffs(const eq_band_t &band, float (&c)[5])
 void eq_compute_coeffs(uint8_t band)
 {
     if (band < EQ_MAX_BANDS) {
-        compute_biquad_coeffs(current_params.eq_bands[band], eq_coeffs[band]);
+        // Use smoothed params for click-free coefficient updates
+        compute_biquad_coeffs(smoothed_params.eq_bands[band], eq_coeffs[band]);
     }
 }
 

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ESP32-DSP</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#2C3639;--surface:#3F4E4F;--surface2:#465759;--accent:#A27B5C;--text:#DCD7C9;--muted:#bdb6a8;--radius:20px;--shadow:0 10px 30px rgba(0,0,0,.25)}
+body{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:linear-gradient(180deg,#2C3639,#263032);color:var(--text);min-height:100vh;padding-bottom:90px}
+.hd{position:sticky;top:0;z-index:100;padding:22px;text-align:center;background:rgba(44,54,57,.82);backdrop-filter:blur(16px);border-bottom:1px solid rgba(220,215,201,.08)}
+.hd h1{font-size:1.5rem;font-weight:700;letter-spacing:.5px}
+.hd .st{margin-top:6px;color:var(--muted);font-size:.85rem}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+.d-g{background:#79b791}.d-r{background:#c76d6d}.d-y{background:#d6aa68}
+.tb{display:flex;gap:10px;overflow-x:auto;padding:16px;position:sticky;top:78px;z-index:99;background:rgba(44,54,57,.88);backdrop-filter:blur(16px)}
+.tb::-webkit-scrollbar{display:none}
+.t{min-width:110px;padding:12px 16px;text-align:center;background:var(--surface);border-radius:16px;color:var(--muted);font-size:.85rem;font-weight:600;cursor:pointer;transition:.25s}
+.t.a{background:var(--accent);color:white;box-shadow:0 8px 24px rgba(162,123,92,.35)}
+.p{display:none;padding:18px}.p.a{display:block}
+.c{background:rgba(63,78,79,.9);border:1px solid rgba(220,215,201,.08);border-radius:24px;padding:20px;margin-bottom:18px;box-shadow:var(--shadow)}
+.c h3{color:var(--text);font-size:1rem;margin-bottom:18px;font-weight:700}
+.vu{height:26px;background:#2C3639;border-radius:30px;overflow:hidden}
+.vu-b{height:100%;width:0%;background:linear-gradient(90deg,#8d6a4f,#A27B5C,#c9a27e);transition:width .15s}
+.vu-l{display:flex;justify-content:space-between;margin-top:8px;color:var(--muted);font-size:.75rem}
+.sl{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.sl label{width:110px;color:var(--muted);font-size:.9rem}
+.sl input[type=range]{flex:1;height:8px;background:#2C3639;border-radius:20px;appearance:none}
+.sl input[type=range]::-webkit-slider-thumb{appearance:none;width:20px;height:20px;border-radius:50%;background:var(--accent);border:3px solid var(--text)}
+.sl .v{width:70px;text-align:right;font-family:monospace;color:var(--text)}
+.btn{padding:12px 18px;border:none;border-radius:16px;font-weight:700;cursor:pointer;transition:.2s}
+.btn:hover{transform:translateY(-2px)}
+.btn-p,.btn-g{background:var(--accent);color:white}
+.btn-s{background:#2C3639;color:var(--text)}
+.br{display:flex;gap:12px}.br .btn{flex:1}
+.tr{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.tg{width:52px;height:28px;border-radius:20px;background:#2C3639;position:relative;cursor:pointer;transition:.25s}
+.tg::after{content:'';width:22px;height:22px;border-radius:50%;background:white;position:absolute;top:3px;left:3px;transition:.25s}
+.tg.on{background:var(--accent)}.tg.on::after{left:27px}
+.ec{width:100%;height:220px;background:#2C3639;border-radius:20px;border:1px solid rgba(220,215,201,.08)}
+.el{display:flex;justify-content:space-between;margin-top:10px;color:var(--muted);font-size:.75rem}
+.pg,.sg{display:grid;gap:12px}
+.pg{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+.sg{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.pb,.si{background:var(--surface2);border-radius:18px;padding:16px;text-align:center}
+.pb{cursor:pointer;transition:.2s}.pb:hover{transform:translateY(-3px)}
+.pb.a{background:var(--accent);color:white}
+.pb .n{display:block;font-weight:700}.pb .d{color:var(--muted);font-size:.8rem}
+.si .l{color:var(--muted);font-size:.8rem}.si .v{margin-top:8px;font-size:1.2rem;font-family:monospace;font-weight:700}
+.toast{position:fixed;left:50%;bottom:25px;transform:translateX(-50%);background:var(--accent);color:white;padding:14px 22px;border-radius:16px;box-shadow:var(--shadow);opacity:0;transition:.25s;pointer-events:none}
+.toast.show{opacity:1}
+@media(max-width:700px){.sl{flex-direction:column;align-items:stretch}.sl label,.sl .v{width:100%;text-align:left}.br{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="hd"><h1>&#x1F3A7; ESP32-DSP</h1>
+<div class="st"><span class="dot" id="cd"></span><span id="ct">Connecting...</span>&nbsp;|&nbsp;BT: <span id="bt">--</span>&nbsp;|&nbsp;Preset: <span id="pn">1/8</span></div></div>
+<div class="tb">
+<div class="t a" onclick="showTab(0)" id="tab0">&#x1F4CA; Status</div>
+<div class="t" onclick="showTab(1)" id="tab1">&#x1F39A; EQ</div>
+<div class="t" onclick="showTab(2)" id="tab2">&#x1F50A; Dynamics</div>
+<div class="t" onclick="showTab(3)" id="tab3">&#x1F500; Xover</div>
+<div class="t" onclick="showTab(4)" id="tab4">&#x1F4BE; Presets</div></div>
+
+<div class="p a" id="panel0">
+<div class="c"><h3>RMS Level</h3><div class="vu"><div class="vu-b" id="vuBar"></div></div><div class="vu-l"><span>-60dB</span><span id="vuDb">-- dB</span><span>0dB</span></div></div>
+<div class="c"><h3>Quick Controls</h3>
+<div class="br" style="margin-bottom:8px"><button class="btn btn-p" id="muteBtn" onclick="toggleMute()">&#x1F507; Mute</button><button class="btn btn-s" id="bypassBtn" onclick="toggleBypass()">&#x1F500; Bypass</button></div>
+<div class="sl"><label>Master Vol</label><input type="range" id="masterVol" min="0" max="100" value="80" oninput="updateParam('master_volume',this.value/100)" onchange="sendParam('master_volume',this.value/100)"><span class="v" id="masterVolVal">80%</span></div></div>
+<div class="c"><h3>System Status</h3><div class="sg">
+<div class="si"><div class="l">BT State</div><div class="v" id="btG">--</div></div>
+<div class="si"><div class="l">WiFi RSSI</div><div class="v" id="wr">-- dBm</div></div>
+<div class="si"><div class="l">Preset</div><div class="v" id="ap">1</div></div>
+<div class="si"><div class="l">CPU</div><div class="v" id="cpu">--%</div></div></div></div></div>
+
+<div class="p" id="panel1">
+<div class="c"><h3>EQ Curve</h3><canvas class="ec" id="eqCanvas" width="360" height="200"></canvas>
+<div class="el"><span>20Hz</span><span>100Hz</span><span>500Hz</span><span>1kHz</span><span>5kHz</span><span>10kHz</span><span>20kHz</span></div></div>
+<div id="eqBands"></div></div>
+
+<div class="p" id="panel2">
+<div class="c"><h3>Woofer (Low Band)</h3>
+<div class="tr"><label>Compressor</label><div class="tg" id="cLT" onclick="toggleSwitch('low_driver.compressor.enabled',this)"></div></div>
+<div class="sl"><label>Threshold</label><input type="range" id="cLTs" min="-60" max="0" value="-12" onchange="sendParam('low_driver.compressor.threshold_db',this.value)"><span class="v" id="cLTsV">-12dB</span></div>
+<div class="sl"><label>Ratio</label><input type="range" id="cLR" min="1" max="20" value="2" step="0.5" onchange="sendParam('low_driver.compressor.ratio',this.value)"><span class="v" id="cLRV">2:1</span></div>
+<div class="sl"><label>Attack</label><input type="range" id="cLA" min="1" max="100" value="10" onchange="sendParam('low_driver.compressor.attack_ms',this.value)"><span class="v" id="cLAV">10ms</span></div>
+<div class="sl"><label>Release</label><input type="range" id="cLRl" min="10" max="1000" value="100" onchange="sendParam('low_driver.compressor.release_ms',this.value)"><span class="v" id="cLRlV">100ms</span></div>
+<div class="tr"><label>Limiter</label><div class="tg on" id="lLT" onclick="toggleSwitch('low_driver.limiter.enabled',this)"></div></div>
+<div class="sl"><label>Ceiling</label><input type="range" id="lLTs" min="-20" max="0" value="-3" onchange="sendParam('low_driver.limiter.threshold_db',this.value)"><span class="v" id="lLTsV">-3dB</span></div></div>
+<div class="c"><h3>Tweeter (High Band)</h3>
+<div class="tr"><label>Compressor</label><div class="tg" id="cHT" onclick="toggleSwitch('high_driver.compressor.enabled',this)"></div></div>
+<div class="sl"><label>Threshold</label><input type="range" id="cHTs" min="-60" max="0" value="-12" onchange="sendParam('high_driver.compressor.threshold_db',this.value)"><span class="v" id="cHTsV">-12dB</span></div>
+<div class="sl"><label>Ratio</label><input type="range" id="cHR" min="1" max="20" value="2" step="0.5" onchange="sendParam('high_driver.compressor.ratio',this.value)"><span class="v" id="cHRV">2:1</span></div>
+<div class="sl"><label>Attack</label><input type="range" id="cHA" min="1" max="100" value="10" onchange="sendParam('high_driver.compressor.attack_ms',this.value)"><span class="v" id="cHAV">10ms</span></div>
+<div class="sl"><label>Release</label><input type="range" id="cHRl" min="10" max="1000" value="100" onchange="sendParam('high_driver.compressor.release_ms',this.value)"><span class="v" id="cHRlV">100ms</span></div>
+<div class="tr"><label>Limiter</label><div class="tg on" id="lHT" onclick="toggleSwitch('high_driver.limiter.enabled',this)"></div></div>
+<div class="sl"><label>Ceiling</label><input type="range" id="lHTs" min="-20" max="0" value="-3" onchange="sendParam('high_driver.limiter.threshold_db',this.value)"><span class="v" id="lHTsV">-3dB</span></div></div></div>
+
+<div class="p" id="panel3">
+<div class="c"><h3>Crossover</h3>
+<div class="sl"><label>Frequency</label><input type="range" id="xf" min="200" max="4000" value="2000" step="50" onchange="sendParam('crossover_hz',this.value)"><span class="v" id="xfV">2000 Hz</span></div>
+<div class="sl"><label>Low Gain</label><input type="range" id="lg" min="0" max="200" value="100" onchange="sendParam('low_gain',this.value/100)"><span class="v" id="lgV">1.00x</span></div>
+<div class="sl"><label>High Gain</label><input type="range" id="hg" min="0" max="200" value="100" onchange="sendParam('high_gain',this.value/100)"><span class="v" id="hgV">1.00x</span></div></div>
+<div class="c"><h3>Time Alignment (Delay)</h3>
+<div class="sl"><label>Low Delay</label><input type="range" id="ld" min="0" max="200" value="0" onchange="sendParam('low_driver.delay.samples',this.value*4410)"><span class="v" id="ldV">0.0 ms</span></div>
+<div class="tr"><label>Low On</label><div class="tg" id="ldT" onclick="toggleSwitch('low_driver.delay.enabled',this)"></div></div>
+<div class="sl"><label>High Delay</label><input type="range" id="hd" min="0" max="200" value="0" onchange="sendParam('high_driver.delay.samples',this.value*4410)"><span class="v" id="hdV">0.0 ms</span></div>
+<div class="tr"><label>High On</label><div class="tg" id="hdT" onclick="toggleSwitch('high_driver.delay.enabled',this)"></div></div></div></div>
+
+<div class="p" id="panel4">
+<div class="c"><h3>Presets</h3><div class="pg" id="pg"></div></div>
+<div class="c"><h3>Save Current Settings</h3><button class="btn btn-g" style="width:100%" onclick="savePreset()">&#x1F4BE; Save to Active Slot</button></div></div>
+
+<div class="toast" id="toast"></div>
+<script>
+let params={},pollTimer=null;
+function showTab(n){document.querySelectorAll('.p').forEach((p,i)=>p.classList.toggle('a',i===n));document.querySelectorAll('.t').forEach((t,i)=>t.classList.toggle('a',i===n));if(n===1)setTimeout(drawEQ,50)}
+function startPolling(){pollTimer=setInterval(fetchStatus,200)}
+async function fetchStatus(){try{const r=await fetch('/api/status');const d=await r.json();updateStatus(d);document.getElementById('cd').className='dot d-g';document.getElementById('ct').textContent='Connected'}catch(e){document.getElementById('cd').className='dot d-r';document.getElementById('ct').textContent='Disconnected'}}
+function updateStatus(d){let db=d.rms_level>0?20*Math.log10(d.rms_level/32768):-60;let pct=Math.max(0,Math.min(100,(db+60)*1.667));document.getElementById('vuBar').style.width=pct+'%';document.getElementById('vuDb').textContent=db.toFixed(1)+' dB';const bt=['Disconnected','Connected','Playing'];document.getElementById('bt').textContent=bt[d.bt_state]||'--';document.getElementById('btG').textContent=bt[d.bt_state]||'--';document.getElementById('pn').textContent=(d.active_preset+1)+'/8';document.getElementById('ap').textContent=d.active_preset+1;document.getElementById('wr').textContent=(d.wifi_rssi||0)+' dBm';const mb=document.getElementById('muteBtn');if(d.mute){mb.style.background='#c76d6d';mb.innerHTML='&#x1F507; MUTED'}else{mb.style.background='';mb.innerHTML='&#x1F507; Mute'}const bb=document.getElementById('bypassBtn');if(d.bypass){bb.style.background='#d6aa68';bb.innerHTML='&#x1F500; BYPASSED'}else{bb.style.background='';bb.innerHTML='&#x1F500; Bypass'}}
+async function fetchParams(){try{const r=await fetch('/api/params');params=await r.json();populateControls();drawEQ()}catch(e){console.log(e)}}
+function populateControls(){if(!params.master_volume)return;document.getElementById('masterVol').value=Math.round(params.master_volume*100);document.getElementById('masterVolVal').textContent=Math.round(params.master_volume*100)+'%';document.getElementById('xf').value=params.crossover_hz;document.getElementById('xfV').textContent=Math.round(params.crossover_hz)+' Hz';document.getElementById('lg').value=Math.round(params.low_gain*100);document.getElementById('lgV').textContent=params.low_gain.toFixed(2)+'x';document.getElementById('hg').value=Math.round(params.high_gain*100);document.getElementById('hgV').textContent=params.high_gain.toFixed(2)+'x';const eq=document.getElementById('eqBands');eq.innerHTML='';for(let i=0;i<4;i++){const b=params.eq_bands[i]||{};eq.innerHTML+='<div class="c"><h3>EQ Band '+i+'</h3><div class="tr"><label>Enabled</label><div class="tg'+(b.enabled?' on':'')+'" onclick="toggleSwitch(\'eq_bands.'+i+'.enabled\',this)"></div></div><div class="sl"><label>Frequency</label><input type="range" min="20" max="20000" value="'+(b.freq_hz||1000)+'" onchange="sendParam(\'eq_bands.'+i+'.freq_hz\',this.value)"><span class="v">'+(b.freq_hz||1000)+'Hz</span></div><div class="sl"><label>Gain</label><input type="range" min="-12" max="12" value="'+(b.gain_db||0)+'" step="0.5" onchange="sendParam(\'eq_bands.'+i+'.gain_db\',this.value)"><span class="v">'+(b.gain_db||0)+'dB</span></div><div class="sl"><label>Q</label><input type="range" min="1" max="100" value="'+((b.q||1)*10)+'" onchange="sendParam(\'eq_bands.'+i+'.q\',this.value/10)"><span class="v">'+(b.q||1).toFixed(1)+'</span></div></div>'}
+const lc=params.low_driver.compressor;document.getElementById('cLT').className='tg'+(lc.enabled?' on':'');document.getElementById('cLTs').value=lc.threshold_db;document.getElementById('cLTsV').textContent=lc.threshold_db+'dB';document.getElementById('cLR').value=lc.ratio;document.getElementById('cLRV').textContent=lc.ratio+':1';document.getElementById('cLA').value=lc.attack_ms;document.getElementById('cLAV').textContent=lc.attack_ms+'ms';document.getElementById('cLRl').value=lc.release_ms;document.getElementById('cLRlV').textContent=lc.release_ms+'ms';const ll=params.low_driver.limiter;document.getElementById('lLT').className='tg'+(ll.enabled?' on':'');document.getElementById('lLTs').value=ll.threshold_db;document.getElementById('lLTsV').textContent=ll.threshold_db+'dB';const hc=params.high_driver.compressor;document.getElementById('cHT').className='tg'+(hc.enabled?' on':'');document.getElementById('cHTs').value=hc.threshold_db;document.getElementById('cHTsV').textContent=hc.threshold_db+'dB';document.getElementById('cHR').value=hc.ratio;document.getElementById('cHRV').textContent=hc.ratio+':1';document.getElementById('cHA').value=hc.attack_ms;document.getElementById('cHAV').textContent=hc.attack_ms+'ms';document.getElementById('cHRl').value=hc.release_ms;document.getElementById('cHRlV').textContent=hc.release_ms+'ms';const hl=params.high_driver.limiter;document.getElementById('lHT').className='tg'+(hl.enabled?' on':'');document.getElementById('lHTs').value=hl.threshold_db;document.getElementById('lHTsV').textContent=hl.threshold_db+'dB';const ld=params.low_driver.delay;document.getElementById('ld').value=ld.samples/4410;document.getElementById('ldV').textContent=(ld.samples*1000/44100).toFixed(1)+' ms';document.getElementById('ldT').className='tg'+(ld.enabled?' on':'');const hd=params.high_driver.delay;document.getElementById('hd').value=hd.samples/4410;document.getElementById('hdV').textContent=(hd.samples*1000/44100).toFixed(1)+' ms';document.getElementById('hdT').className='tg'+(hd.enabled?' on':'')}
+function drawEQ(){const c=document.getElementById('eqCanvas');if(!c)return;const ctx=c.getContext('2d');const w=c.width,h=c.height;ctx.fillStyle='#2C3639';ctx.fillRect(0,0,w,h);ctx.strokeStyle='#3F4E4F';ctx.lineWidth=1;for(let i=0;i<8;i++){let x=i*(w/7);ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke()}for(let i=0;i<5;i++){let y=i*(h/4);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}ctx.strokeStyle='#465759';ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(0,h/2);ctx.lineTo(w,h/2);ctx.stroke();ctx.setLineDash([]);if(!params.eq_bands)return;ctx.strokeStyle='#A27B5C';ctx.lineWidth=2.5;ctx.beginPath();for(let px=0;px<w;px++){let freq=20*Math.pow(1000,px/w);let total=0;for(let i=0;i<4;i++){const b=params.eq_bands[i];if(!b||!b.enabled)continue;let dist=Math.abs(Math.log2(freq/b.freq_hz));let g=0;if(i===0){g=freq<b.freq_hz?b.gain_db:b.gain_db*Math.max(0,1-dist*2)}else if(i===3){g=freq>b.freq_hz?b.gain_db:b.gain_db*Math.max(0,1-dist*2)}else{let s=b.freq_hz/b.q;g=b.gain_db*Math.exp(-dist*dist/(2*(s/b.freq_hz)*(s/b.freq_hz)))}total+=g}let py=h/2-(total/24)*(h/2);py=Math.max(0,Math.min(h,py));if(px===0)ctx.moveTo(px,py);else ctx.lineTo(px,py)}ctx.stroke();ctx.fillStyle='#bdb6a8';ctx.font='10px sans-serif';ctx.fillText('+12dB',4,14);ctx.fillText('0dB',4,h/2+4);ctx.fillText('-12dB',4,h-4)}
+async function sendParam(path,value){try{await fetch('/api/params',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,value:parseFloat(value)})});showToast('Updated')}catch(e){showToast('Error')}}
+function updateParam(path,value){if(path==='master_volume')document.getElementById('masterVolVal').textContent=Math.round(value*100)+'%';sendParam(path,value)}
+async function toggleSwitch(path,el){el.classList.toggle('on');await sendParam(path,el.classList.contains('on'))}
+async function toggleMute(){await sendParam('mute',!params.mute);fetchStatus()}
+async function toggleBypass(){await sendParam('bypass',!params.bypass);fetchStatus()}
+async function fetchPresets(){try{const r=await fetch('/api/presets');const d=await r.json();const g=document.getElementById('pg');g.innerHTML='';for(let i=0;i<8;i++){const n=(d.presets&&d.presets[i])?d.presets[i]:'Preset '+(i+1);const a=i===d.active?' a':'';g.innerHTML+='<div class="pb'+a+'" onclick="loadPreset('+i+')"><span class="n">'+n+'</span><span class="d">Slot '+(i+1)+'</span></div>'}}catch(e){console.log(e)}}
+async function loadPreset(idx){await fetch('/api/presets/load',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:idx})});showToast('Preset '+(idx+1)+' loaded');await fetchParams();await fetchPresets();fetchStatus()}
+async function savePreset(){const idx=params.active_preset||0;await fetch('/api/presets/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:idx})});showToast('Saved to '+(idx+1));await fetchPresets()}
+function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1500)}
+window.addEventListener('load',()=>{fetchStatus();fetchParams();fetchPresets();startPolling()});
+</script></body></html>

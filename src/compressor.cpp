@@ -71,9 +71,9 @@ void comp_process_sample(float in_l, float in_r, float &out_l, float &out_r,
         return;
     }
 
-    // Read the compressor parameters for this driver
+    // Read from smoothed params for click-free parameter changes
     const dyn_params_t &params =
-        (&current_params.low_driver)[driver].compressor;
+        (&smoothed_params.low_driver)[driver].compressor;
 
     if (!params.enabled) {
         out_l = in_l;
