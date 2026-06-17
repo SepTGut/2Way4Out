@@ -49,4 +49,4 @@
 - **Core 0:** Handles I2C, BT, and UI.
 - **Memory:** Keep ring buffer at 8KB to maintain low latency.
 - **CPU:** Current estimate ~33% on Core 1 with all effects enabled.
-- **Build:** RAM 12.7% (41KB/327KB), Flash 89.7% (1.17MB/1.31MB).
+- **Build:** RAM 12.7% (41KB/327KB), Flash 74.8% (1.17MB/1.5MB app partition on 4MB chip).
