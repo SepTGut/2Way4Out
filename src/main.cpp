@@ -58,6 +58,7 @@
 #include "bluetooth_sink.h"
 #include "dsp_core.h"
 #include "preset.h"
+#include "web_portal.h"
 #include "pins.h"
 
 // ═══════════════════════════════════════════════════════════════
@@ -187,7 +188,12 @@ void setup()
     // "esp32DSP".  The phone can now discover and connect to it.
     bt_init();
 
-    // ── 10. Unmute DACs ────────────────────────────────────
+    // ── 10. Initialise WiFi web portal ─────────────────────
+    // Starts WiFi AP (and optionally STA) + web server.
+    // The portal provides full DSP control from any browser.
+    web_init();
+
+    // ── 11. Unmute DACs ────────────────────────────────────
     // Now that I2S is running and DMA buffers contain silence,
     // it's safe to unmute the DACs.  Audio will flow once the
     // phone starts streaming.
@@ -195,7 +201,7 @@ void setup()
     digitalWrite(PIN_DAC_LOW_MUTE, HIGH);
     Serial.println("[OK] DACs unmuted");
 
-    // ── 11. Create DSP task on Core 1 ──────────────────────
+    // ── 12. Create DSP task on Core 1 ──────────────────────
     // This task does ALL the audio processing.  It must run at high
     // priority on a dedicated core to ensure glitch-free output.
     BaseType_t dsp_ret = xTaskCreatePinnedToCore(
@@ -205,7 +211,7 @@ void setup()
     else
         Serial.println("[FAIL] DSP task creation failed!");
 
-    // ── 12. Create UI task on Core 0 ───────────────────────
+    // ── 13. Create UI task on Core 0 ───────────────────────
     // This task reads pots and updates the display.  Lower priority
     // ensures the DSP task always gets CPU time first.
     BaseType_t ui_ret = xTaskCreatePinnedToCore(

@@ -57,8 +57,9 @@ void delay_process_sample(int16_t in_l, int16_t in_r,
         return;
     }
 
+    // Read from smoothed params for click-free parameter changes
     const delay_params_t &params =
-        (&current_params.low_driver)[driver].delay;
+        (&smoothed_params.low_driver)[driver].delay;
 
     int16_t *buf_L = (driver == 0) ? delay_buf_low_L  : delay_buf_high_L;
     int16_t *buf_R = (driver == 0) ? delay_buf_low_R  : delay_buf_high_R;

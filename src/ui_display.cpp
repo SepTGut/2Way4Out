@@ -13,6 +13,7 @@
 
 #include "ui_display.h"
 #include "globals.h"
+#include "web_portal.h"
 #include <Arduino.h>
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
@@ -103,9 +104,22 @@ static void draw_page_main(const dsp_params_t &p)
     display.printf("LoG: %.2f  HiG: %.2f", p.low_gain, p.high_gain);
     display.println();
 
+    // WiFi status
+    display.setCursor(0, 44);
+    if (wifi_connected) {
+        display.print("WiFi:");
+        String ip = web_server_ip;
+        // Show last octet for brevity (e.g., ".105")
+        int lastDot = ip.lastIndexOf('.');
+        if (lastDot >= 0) display.print(ip.substring(lastDot));
+        else display.print(ip);
+    } else {
+        display.print("WiFi:--");
+    }
+
     // Bypass indicator
     if (p.bypass) {
-        display.setCursor(0, 44);
+        display.setCursor(0, 54);
         display.print("*** BYPASS ***");
     }
 

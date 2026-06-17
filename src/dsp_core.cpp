@@ -32,8 +32,7 @@
 #define PARAM_SMOOTHING_FACTOR 0.02f
 #define DC_BLOCK_CUTOFF 20.0f
 
-static dsp_params_t smoothed_params = dsp_params_default;
-static float dc_block_state[2] = {0.0f, 0.0f};
+float dc_block_state[2] = {0.0f, 0.0f};
 static dsp_params_t prev_params = dsp_params_default;  // For change detection
 
 void compute_coeffs(float cutoff_hz, float sample_rate, float *a0, float *b1)

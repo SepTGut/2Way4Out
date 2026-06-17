@@ -47,7 +47,8 @@ A professional-grade DSP platform built on the ESP32 — a 2-way active crossove
 - **Dual-core FreeRTOS** — DSP on Core 1 (priority 5), UI on Core 0 (priority 2)
 - **Ring Buffer** — 8 KB audio buffer decouples BT callback from DSP task
 - **Mutex-protected Parameters** — Glitch-free parameter updates
-- **Build Stats** — RAM 12.7% (41KB/327KB), Flash 74.8% (1.17MB/1.5MB) on 4MB chip
+- **Build Stats** — RAM 18.1% (59KB/327KB), Flash 80.6% (1.69MB/2.0MB) on 4MB chip
+- **WiFi Web Portal** — Full DSP control from any browser (phone/desktop)
 
 ---
 
@@ -448,6 +449,33 @@ Preset: 1/8
 | [`Planning.md`](Planning.md) | Development plan, completed features, roadmap |
 
 ---
+
+## WiFi Web Portal
+
+The ESP32 creates its own WiFi access point for direct connection from any phone or computer browser.
+
+### Connecting
+1. Power on the ESP32-DSP
+2. On your phone/computer, connect to WiFi: **`ESP32-DSP`** (password: `dsp12345`)
+3. Open a browser and go to: **`http://192.168.4.1`**
+4. The web portal loads with live VU meter and full DSP controls
+
+### Features
+- **Dashboard** — Live RMS VU meter, master volume, mute/bypass toggles, system status
+- **EQ** — Visual EQ curve with draggable nodes, per-band frequency/gain/Q sliders
+- **Dynamics** — Per-band compressor (threshold/ratio/attack/release) and limiter ceiling
+- **Crossover** — Crossover frequency, per-band gain, time-alignment delay
+- **Presets** — Save/load/rename 8 presets
+
+### How It Works
+The web portal runs an ESPAsyncWebServer on Core 0. It reads and writes DSP parameters through the same `dsp_params_mutex` as the physical OLED + encoder interface. This means you can adjust parameters from the web page and the physical controls simultaneously — both stay in sync.
+
+**Audio path is unchanged** — Bluetooth A2DP remains the audio source. The web portal is control-only.
+
+### Uploading Web UI Changes
+```bash
+pio run -t uploadfs -e esp32dev
+```
 
 ## Architecture Summary
 

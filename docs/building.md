@@ -222,6 +222,23 @@ The project has two build environments in `platformio.ini`:
 
 ---
 
+## Uploading Web UI Files
+
+The web portal's HTML/CSS/JS is stored in the `data/` directory and uploaded to the ESP32's LittleFS filesystem (separate from firmware):
+
+```bash
+# Build and upload filesystem image (first time or when data/ changes)
+pio run -t uploadfs -e esp32dev
+
+# Upload firmware only (when only .cpp/.h files change)
+pio run -t upload -e esp32dev
+
+# Upload both firmware and filesystem
+pio run -t upload -t uploadfs -e esp32dev
+```
+
+**Note**: After uploading the filesystem, you may need to reset the ESP32 for LittleFS to mount properly.
+
 ## Updating Dependencies
 
 ```bash

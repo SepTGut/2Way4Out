@@ -15,6 +15,9 @@ dsp_params_t current_params = dsp_params_default;
 // ── Bluetooth state ──
 volatile bt_conn_state_t bt_state = BT_DISCONNECTED;
 
+// ── Smoothed parameters (DSP task writes, compressor/limiter/EQ read) ──
+dsp_params_t smoothed_params = dsp_params_default;
+
 // ── Crossover filter state ──
 float filt_state[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 
@@ -38,6 +41,10 @@ int16_t *delay_buf_low_R  = NULL;
 int16_t *delay_buf_high_L = NULL;
 int16_t *delay_buf_high_R = NULL;
 uint16_t delay_write_idx[2] = {0, 0};
+
+// ── WiFi / Web state ──
+volatile bool    wifi_connected = false;
+String           web_server_ip  = "";
 
 // ── UI / control state ──
 volatile int8_t  enc_count   = 0;
