@@ -10,8 +10,11 @@
 6. [DSP Effects Chain](#dsp-effects-chain)
 7. [Parameter System](#parameter-system)
 8. [WiFi Web Portal](#wifi-web-portal)
-9. [Memory Map](#memory-map)
-10. [Build & Deploy](#build--deploy)
+9. [Web Portal UI Design](#web-portal-ui-design)
+10. [Memory Map](#memory-map)
+11. [Build & Deploy](#build--deploy)
+12. [Troubleshooting](#troubleshooting)
+13. [Future Enhancements](#future-enhancements)
 
 ---
 
@@ -466,6 +469,44 @@ All parameter writes go through the same `dsp_params_mutex` as the physical cont
 
 ---
 
+## Web Portal UI Design
+
+The web portal uses a modern dark theme with warm amber accents inspired by professional audio equipment.
+
+### Color Palette
+| Variable | Hex | Usage |
+|----------|-----|-------|
+| `--bg` | `#2C3639` | Page background (dark slate) |
+| `--surface` | `#3F4E4F` | Cards, tabs (muted teal) |
+| `--surface2` | `#465759` | Preset buttons, status items |
+| `--accent` | `#A27B5C` | Active elements, sliders, highlights (warm amber) |
+| `--text` | `#DCD7C9` | Primary text (warm white) |
+| `--muted` | `#bdb6a8` | Secondary labels (warm gray) |
+| Success | `#79b791` | Connected indicator, toggle on |
+| Error | `#c76d6d` | Disconnected indicator |
+| Warning | `#d6aa68` | Bypass indicator |
+
+### Layout
+- **Sticky header** with glassmorphism blur effect — always visible while scrolling
+- **Sticky tab bar** — 5 scrollable tabs with smooth transitions
+- **Card-based content** — rounded 24px cards with subtle shadows
+- **Responsive** — stacks vertically on screens <700px wide
+
+### Controls
+- **Sliders** — Custom-styled range inputs with amber thumb and 3px border
+- **Toggles** — Animated 52×28px switches with smooth slide transition
+- **Buttons** — 3 variants (primary/secondary/success) with hover lift effect
+- **VU Meter** → 26px rounded bar with gradient (amber → light amber)
+- **EQ Canvas** — 360×220px dark canvas with amber curve and grid
+
+### UX Details
+- **Toast notifications** — Slide up from bottom, auto-dismiss after 1.5s
+- **200ms polling** — Status endpoint polled live for VU meter animation
+- **Tab memory** — Active tab remembered per session
+- **No page reload** — Single-page app, all updates via REST API
+
+---
+
 ## Memory Map
 
 ### Flash Layout (4 MB total)
@@ -473,7 +514,13 @@ All parameter writes go through the same `dsp_params_mutex` as the physical cont
 ```
 Address     Size     Partition    Contents
 0x000000    144 KB   Bootloader   Second-stage boot + partition table
-0x024000    4 KB     otadata      OTA metadata
+0x024000    8 KB     otadata      OTA metadata
+0x026000    4 KB     phy_init     PHY calibration data
+0x027000    16 KB    NVS          Preset storage (8 × ~256 bytes)
+0x02B000    2.0 MB   factory      Firmware + all libraries
+0x22B000    512 KB   storage      LittleFS (web UI: index.html ~19 KB)
+0x2AB000    ~1.2 MB  (unused)     Free space
+```
 0x025000    4 KB     phy_init     PHY calibration data
 0x026000    16 KB    NVS          Preset storage (8 × ~256 bytes)
 0x02A000    2.0 MB   factory      Firmware + all libraries
@@ -590,6 +637,40 @@ Tests: 40/40 PASSED
 | Encoder not working | GPIO 34/35 are input-only | Correct — they can't be outputs |
 | ADC all zeros | I2C bus hung | Check ADS1115 wiring, add timeout |
 | Preset not saving | NVS full | Erase flash: `pio run -t erase` |
+
+---
+
+## Optimizations Applied
+
+### Parameter Smoothing Fix
+**Problem**: Compressor, limiter, and EQ read from `current_params` (unsmoothed) while the DSP task writes smoothed values to `smoothed_params`. This caused audible clicks when adjusting dynamics/EQ from the web portal or physical controls.
+
+**Fix**: All DSP effect modules (compressor, limiter, EQ, delay) now read from `smoothed_params` which is updated with linear interpolation (10–20 ms glide) by the DSP task. This ensures click-free parameter changes from any source (pots, encoder, web portal).
+
+### Web UI Storage Optimization
+**Problem**: The embedded HTML/CSS/JS web app was ~19 KB stored in PROGMEM, consuming precious app partition flash space. Combined with ESPAsyncWebServer + ArduinoJson libraries, the firmware exceeded the 1.5 MB app partition.
+
+**Fix**:
+- Expanded app partition from 1.5 MB → 2.0 MB (we have 4 MB flash total)
+- Added 512 KB LittleFS partition for web files
+- Web UI now served from LittleFS filesystem instead of embedded PROGMEM
+- HTML/CSS/JS can be updated independently via `pio run -t uploadfs` without reflashing firmware
+
+### Memory Leak Fix
+**Problem**: `setup_routes()` allocated an `AsyncWebHandler` with `new` but never freed it.
+
+**Fix**: Removed the unnecessary handler allocation — ESPAsyncWebServer's `on()` method handles body POST directly without a separate handler object.
+
+### Partition Layout
+```
+4 MB Flash:
+  2.0 MB  factory (app)      — Firmware + libraries
+   16 KB  nvs                — Preset storage
+    8 KB  otadata            — OTA metadata
+    4 KB  phy_init           — PHY calibration
+  512 KB  storage (LittleFS) — Web UI files
+  ~1.2 MB  (unused)          — Free for future use
+```
 
 ---
 
