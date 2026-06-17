@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 // ─────────────────────────────────────────────────────────────
 // M_PI fallback — some ESP32 Arduino cores do not define M_PI,
 // but we need it for crossover filter coefficient calculations.
@@ -77,19 +79,25 @@
 // SECTION 4 — ADS1115 ADC
 // ═══════════════════════════════════════════════════════════════
 //
-// The ADS1115 is a 16-bit I2C ADC used to read 4 potentiometers:
+// The ADS1115 is a 16-bit I2C ADC used to read potentiometers:
 //   CH0 = master volume
 //   CH1 = crossover frequency
 //   CH2 = low-band gain
 //   CH3 = high-band gain
+//
+// A second ADS1115 (address 0x49) adds 4 more channels for EQ,
+// dynamics, and other parameters.
 //
 // At GAIN_ONE (default), the full-scale range is ±4.096 V, and the
 // LSB size is 0.125 mV.  In single-ended mode the effective range is
 // 0 … +4.096 V → raw value 0 … 26666 (15-bit + sign field at 16-bit
 // resolution with sign-extension).
 
-/// I2C address of the ADS1115 (ADDR pin tied to GND = 0x48).
+/// I2C address of the first ADS1115 (ADDR pin tied to GND = 0x48).
 #define ADS1115_ADDRESS     0x48
+
+/// I2C address of the second ADS1115 (ADDR pin tied to VDD = 0x49).
+#define ADS1115_ADDRESS_2   0x49
 
 /// Maximum raw ADC reading in single-ended mode at GAIN_ONE.
 /// At ±4.096 V range the 16-bit signed output spans −32767 … +32767,
@@ -160,6 +168,26 @@
 #define UI_TASK_PRIORITY    2
 
 // ═══════════════════════════════════════════════════════════════
+// SECTION 10 — Effect Configuration Limits
+// ═══════════════════════════════════════════════════════════════
+
+/// Maximum number of EQ bands (full-range, applied before crossover).
+#define EQ_MAX_BANDS        4
+
+/// Maximum number of driver bands (low + high = 2).
+#define DRIVER_BANDS        2
+
+/// Maximum delay time in milliseconds (per band).
+/// At 44.1 kHz, 20 ms = 882 samples.
+#define DELAY_MAX_MS        20.0f
+
+/// Maximum delay samples (DELAY_MAX_MS * SAMPLE_RATE / 1000).
+#define DELAY_MAX_SAMPLES   882
+
+/// Number of user presets storable in NVS flash.
+#define NUM_PRESETS         8
+
+// ═══════════════════════════════════════════════════════════════
 // Type Definitions
 // ═══════════════════════════════════════════════════════════════
 
@@ -178,6 +206,61 @@ typedef enum {
     BT_PLAYING,            ///< Actively streaming audio data
 } bt_conn_state_t;
 
+// ─────────────────────────────────────────────────────────────
+// Forward declarations for new DSP effect types
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * @brief One parametric EQ band (biquad filter).
+ *
+ * Applied to the full-range stereo signal before the crossover.
+ * Supported types: low-shelf, peaking PEQ, high-shelf.
+ */
+typedef struct {
+    bool  enabled;     ///< true = band is active
+    float freq_hz;     ///< Centre frequency in Hz (20 – 20000)
+    float gain_db;     ///< Gain in dB (-12.0 to +12.0)
+    float q;           ///< Quality factor / bandwidth (0.1 – 10.0)
+} eq_band_t;
+
+/**
+ * @brief Compressor / limiter parameters for one driver band.
+ *
+ * Feed-forward design with peak detector.
+ * The limiter uses the same structure but with ratio = ∞ (very high)
+ * and a hard knee.
+ */
+typedef struct {
+    bool  enabled;         ///< true = dynamics processing active
+    float threshold_db;    ///< Threshold in dBFS (-60 to 0)
+    float ratio;           ///< Compression ratio (1:1 to 20:1; 100:1 for limiter)
+    float attack_ms;       ///< Attack time in ms (0.1 – 100)
+    float release_ms;      ///< Release time in ms (10 – 1000)
+    float makeup_db;       ///< Makeup gain in dB (0 – 24)
+} dyn_params_t;
+
+/**
+ * @brief Delay line parameters for one driver band.
+ *
+ * Used for time-alignment between woofer and tweeter acoustic centres.
+ */
+typedef struct {
+    bool     enabled;      ///< true = delay active
+    uint16_t samples;      ///< Delay length in samples (0 – DELAY_MAX_SAMPLES)
+} delay_params_t;
+
+/**
+ * @brief Per-driver (per-band) DSP parameters.
+ *
+ * Each driver (low=woofer, high=tweeter) gets its own compressor,
+ * limiter, and delay.
+ */
+typedef struct {
+    dyn_params_t   compressor;   ///< Compressor for this driver
+    dyn_params_t   limiter;      ///< Limiter for this driver
+    delay_params_t delay;        ///< Delay for this driver
+} driver_params_t;
+
 /**
  * @brief Runtime DSP parameters shared between the UI task (reader)
  *        and the DSP task (consumer).
@@ -186,28 +269,68 @@ typedef enum {
  * the ADS1115 pots and writes this struct; the DSP task reads it inside
  * the audio processing loop.
  *
- * Units:
- *   master_volume  — linear scale, 0.0 (silent) … 1.0 (full)
- *   crossover_hz   — Hz, clamped to [CROSSOVER_MIN_HZ … CROSSOVER_MAX_HZ]
- *   low_gain       — linear multiplier, 0.0 … GAIN_MAX
- *   high_gain      — linear multiplier, 0.0 … GAIN_MAX
+ * Signal flow:
+ *   Full-range EQ → Crossover → Low driver (comp/lim/delay) → I2S1
+ *                                High driver (comp/lim/delay) → I2S0
  */
 typedef struct {
+    // ── Legacy parameters (preserved for backward compatibility) ──
     float master_volume;   ///< 0.0 (mute) … 1.0 (full volume)
     float crossover_hz;    ///< Crossover frequency in Hz
-    float low_gain;        ///< Gain applied to the low-frequency band
-    float high_gain;       ///< Gain applied to the high-frequency band
+    float low_gain;        ///< Linear multiplier, 0.0 … GAIN_MAX
+    float high_gain;       ///< Linear multiplier, 0.0 … GAIN_MAX
+
+    // ── Parametric EQ (4 bands, applied to full-range signal) ──
+    eq_band_t eq_bands[EQ_MAX_BANDS];
+
+    // ── Per-driver dynamics + delay ──
+    driver_params_t low_driver;    ///< Woofer (low band) → I2S1
+    driver_params_t high_driver;   ///< Tweeter (high band) → I2S0
+
+    // ── UI state (not audio parameters, but shared) ──
+    uint8_t  active_page;          ///< OLED display page (0 = main, 1 = EQ, etc.)
+    uint8_t  active_preset;        ///< Currently loaded preset index (0 … NUM_PRESETS-1)
+    bool     mute;                 ///< true = all outputs silenced
+    bool     bypass;               ///< true = DSP bypass (raw stereo → both DACs)
 } dsp_params_t;
+
+/**
+ * @brief Complete preset — a snapshottable dsp_params_t with a name.
+ */
+typedef struct {
+    dsp_params_t params;            ///< All DSP parameters
+    char         name[12];          ///< Short human-readable label
+} preset_t;
 
 /**
  * @brief Safe default values for DSP parameters.
  *
- * Used as a fallback when the mutex cannot be acquired (e.g. during
- * startup before the mutex is created, or in rare contention cases).
+ * Used as a fallback when the mutex cannot be acquired or no preset
+ * has been loaded yet.
  */
 static const dsp_params_t dsp_params_default = {
-    .master_volume = 0.8f,    ///< 80% volume — loud but not maxed out
-    .crossover_hz  = 2000.0f, ///< 2 kHz — typical 2-way speaker crossover
-    .low_gain      = 1.0f,    ///< Unity gain on low band
-    .high_gain     = 1.0f,    ///< Unity gain on high band
+    .master_volume = 0.8f,
+    .crossover_hz  = 2000.0f,
+    .low_gain      = 1.0f,
+    .high_gain     = 1.0f,
+    .eq_bands = {
+        {false,  100.0f, 0.0f, 0.7f},   // Low shelf
+        {false,  500.0f, 0.0f, 1.0f},   // Low-mid PEQ
+        {false, 2000.0f, 0.0f, 1.0f},   // High-mid PEQ
+        {false, 8000.0f, 0.0f, 0.7f},   // High shelf
+    },
+    .low_driver = {
+        .compressor = {false, -12.0f,  2.0f,  10.0f, 100.0f, 0.0f},
+        .limiter    = {true,   -3.0f, 100.0f,   1.0f,  50.0f, 0.0f},
+        .delay      = {false, 0},
+    },
+    .high_driver = {
+        .compressor = {false, -12.0f,  2.0f,  10.0f, 100.0f, 0.0f},
+        .limiter    = {true,   -3.0f, 100.0f,   1.0f,  50.0f, 0.0f},
+        .delay      = {false, 0},
+    },
+    .active_page   = 0,
+    .active_preset = 0,
+    .mute          = false,
+    .bypass        = false,
 };

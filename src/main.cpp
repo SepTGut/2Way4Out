@@ -18,21 +18,27 @@
  *                    │  ┌─────────────────────────────────────┐
  *                    ├─►│ 1. Read batch from ring buffer      │
  *                    │  │ 2. Grab DSP params (mutex)          │
- *                    │  │ 3. Compute crossover coefficients   │
- *                    │  │ 4. Apply LPF/HPF to each frame      │
- *                    │  │ 5. Apply gain + master volume       │
- *                    │  │ 6. Clip to 16-bit                   │
- *                    │  │ 7. Write low-band → I2S1 (woofer)  │
- *                    │  │ 8. Write high-band → I2S0 (tweeter)│
+ *                    │  │ 3. Smooth parameters                │
+ *                    │  │ 4. DC block filter                  │
+ *                    │  │ 5. Parametric EQ (4-band biquad)    │
+ *                    │  │ 6. Compute crossover coefficients   │
+ *                    │  │ 7. Apply LPF/HPF to each frame      │
+ *                    │  │ 8. Per-band compressor → limiter    │
+ *                    │  │ 9. Per-band delay (time alignment)  │
+ *                    │  │10. Apply gain + master volume       │
+ *                    │  │11. Clip to 16-bit                   │
+ *                    │  │12. Write low-band → I2S1 (woofer)  │
+ *                    │  │13. Write high-band → I2S0 (tweeter)│
  *                    │  └─────────────────────────────────────┘
  *                    │
  *   ┌────────────────┴──────────────────────────────────────┐
  *   │  UI Task (Core 0, priority 2)                         │
  *   │  ┌────────────────────────────────────────────────┐   │
- *   │  │ 1. Read ADS1115 (4 pots → DSP params)          │   │
- *   │  │ 2. Update current_params (mutex)               │   │
- *   │  │ 3. Render OLED status screen                   │   │
- *   │  │ 4. Sleep 200 ms                                │   │
+ *   │  │ 1. Read ADS1115 (8 pots → DSP params)          │   │
+ *   │  │ 2. Read encoder + footswitches                 │   │
+ *   │  │ 3. Update current_params (mutex)               │   │
+ *   │  │ 4. Render OLED status screen                   │   │
+ *   │  │ 5. Sleep 200 ms                                │   │
  *   │  └────────────────────────────────────────────────┘   │
  *   └───────────────────────────────────────────────────────┘
  *
@@ -51,33 +57,34 @@
 #include "ui_display.h"
 #include "bluetooth_sink.h"
 #include "dsp_core.h"
+#include "preset.h"
 #include "pins.h"
 
 // ═══════════════════════════════════════════════════════════════
-// UI Task  (Core 0 — ADS1115 + OLED)
+// UI Task  (Core 0 — ADS1115 + Encoder + Footswitches + OLED)
 // ═══════════════════════════════════════════════════════════════
 //
 // This task runs at lower priority than the DSP task so that audio
 // processing is never delayed by ADC reads or OLED rendering.
 //
-// It reads the 4 potentiometers, updates the shared parameters under
-// mutex protection, and refreshes the OLED display — all in one loop
-// iteration every 200 ms.
+// It reads the potentiometers, encoder, and footswitches, updates
+// the shared parameters under mutex protection, and refreshes the
+// OLED display — all in one loop iteration every 200 ms.
 
 static void ui_task(void *)
 {
     Serial.println("UI task started on Core " + String(xPortGetCoreID()));
 
     while (1) {
-        // ── Read potentiometers ──────────────────────────────
-        // adc_update_params() reads all 4 ADS1115 channels and fills
-        // a local dsp_params_t struct with normalised values.
+        // ── Read potentiometers + encoder + footswitches ──────
+        // adc_update_params() reads all ADS1115 channels, processes
+        // encoder steps, and handles footswitch flags.
         dsp_params_t params;
         adc_update_params(params);
 
         // ── Update shared parameters ────────────────────────
         // The mutex protects against the DSP task reading params
-        // mid-update.  Critical section is very short (4 float copies).
+        // mid-update.  Critical section is very short (struct copy).
         if (xSemaphoreTake(dsp_params_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
             current_params = params;
             xSemaphoreGive(dsp_params_mutex);
@@ -106,8 +113,8 @@ static void ui_task(void *)
 //   3. I2S peripherals (configure DMA and pin routing)
 //   4. Ring buffer (audio pipeline between BT and DSP)
 //   5. Mutex (protects shared DSP parameters)
-//   6. I2C bus (shared between ADS1115 and SSD1306)
-//   7. ADS1115 ADC (potentiometer reader)
+//   6. I2C bus (shared between ADS1115×2, SSD1306, EEPROM)
+//   7. ADC + encoder + footswitches (adc_init handles all three)
 //   8. SSD1306 OLED (status display)
 //   9. Bluetooth A2DP sink (phone audio receiver)
 //  10. Unmute DACs (now safe — DMA is ready)
@@ -122,6 +129,7 @@ void setup()
     Serial.println("\n========================================");
     Serial.println("  ESP32-DSP  2-Way Active Crossover");
     Serial.println("  Target: ESP32-WROOM-32 / DevKit V4");
+    Serial.println("  Features: EQ + Comp + Lim + Delay");
     Serial.println("========================================\n");
 
     // ── 2. Hold DACs muted during initialisation ───────────
@@ -161,16 +169,15 @@ void setup()
     // on typical breadboard/protoboard wiring.
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 400000);
 
-    // ── 7. Initialise ADS1115 ADC ──────────────────────────
-    // GAIN_ONE configures ±4.096V range (0.125 mV per LSB).
-    // If the ADS1115 isn't found, we log the error but continue —
-    // the system will just use default parameter values.
-    if (!ads.begin(ADS1115_ADDRESS)) {
-        Serial.println("[FAIL] ADS1115 not found! Check wiring.");
-    } else {
-        ads.setGain(GAIN_ONE);
-        Serial.println("[OK] ADS1115 initialised");
-    }
+    // ── 7. Initialise NVS preset storage ───────────────────
+    // preset_init() sets up NVS flash and loads preset 0 if available.
+    preset_init();
+
+    // ── 8. Initialise ADC + encoder + footswitches ─────────
+    // adc_init() sets up both ADS1115 chips, encoder ISRs, and
+    // footswitch ISRs.  If the 2nd ADS1115 is not found, the system
+    // continues with 4 channels instead of 8.
+    adc_init();
 
     // ── 8. Initialise SSD1306 OLED display ─────────────────
     ui_init();

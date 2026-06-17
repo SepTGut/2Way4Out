@@ -2,13 +2,12 @@
  * @file ui_display.h
  * @brief Public API for the SSD1306 OLED status display.
  *
- * The 128×64 pixel I2C OLED shows:
- *   - Title bar ("=== ESP32DSP ===")
- *   - Bluetooth connection state (Disconnected / Connected / Playing)
- *   - Master volume (percentage)
- *   - Crossover frequency (Hz)
- *   - Low-band and high-band gain values
- *   - A simple VU-style bar driven by master volume
+ * The 128×64 pixel I2C OLED shows multiple pages:
+ *   Page 0 (Main):    Title, BT state, volume, crossover, gains, VU meter
+ *   Page 1 (EQ 1-2):  EQ bands 0-1 frequency, gain, Q
+ *   Page 2 (EQ 3-4):  EQ bands 2-3 frequency, gain, Q
+ *   Page 3 (Dynamics): Compressor threshold/ratio, limiter threshold per band
+ *   Page 4 (Delay):    Delay time per band, mute/bypass status
  *
  * The display is refreshed every UI_REFRESH_MS (200 ms) by the UI task.
  * All rendering is done via the Adafruit_SSD1306 + Adafruit_GFX libraries.
@@ -53,15 +52,10 @@ void ui_init();
 /**
  * @brief Redraw the entire status screen.
  *
- * Clears the display buffer and renders all UI elements in order:
- *   1. Title bar (top line)
- *   2. Bluetooth state (second line)
- *   3. Volume, crossover, low-gain, high-gain (text rows)
- *   4. VU meter bar (bottom of screen)
+ * Renders the current page based on params.active_page.
+ * Each page shows different DSP parameters.
  *
  * This function is called from the UI task every UI_REFRESH_MS.
- * It does NOT call display.display() internally — that is done
- * at the end to commit the buffer to the OLED in one I2C transaction.
  *
  * @param params  Current DSP parameters to display (read-only).
  */
