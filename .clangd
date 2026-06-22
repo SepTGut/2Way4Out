@@ -1,0 +1,8 @@
+CompileFlags:
+  Remove:
+    - "-fno-tree-switch-conversion"
+    - "-fstrict-volatile-bitfields"
+    - "-mlongcalls"
+    - "-fno-jump-tables"
+    - "-fno-tree-vrp"
+    - "-freorder-blocks"
